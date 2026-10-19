@@ -1,0 +1,265 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ภารกิจตัดใจ 💔</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#ffe8f0;color:#58364a;
+ font-family:system-ui,sans-serif;text-align:center;
+}
+h2{margin:18px 8px 5px}
+p{margin:8px}
+#gameArea{max-width:850px;margin:auto;padding:8px}
+canvas{
+ width:100%;background:#fffafd;
+ border:3px solid #f5a5c2;border-radius:16px;
+ display:block;touch-action:none;
+}
+button{
+ border:0;border-radius:14px;padding:12px 19px;
+ margin:5px;background:#f477a5;color:white;
+ font-size:17px;font-weight:bold;cursor:pointer;
+}
+#status{font-weight:bold;min-height:28px}
+#letterArea{
+ display:none;min-height:85vh;padding:30px 15px;
+ align-items:center;justify-content:center;flex-direction:column;
+}
+.envelope{
+ width:230px;height:155px;position:relative;
+ background:#f4a9c4;border-radius:8px;cursor:pointer;
+ box-shadow:0 8px 20px #d68ba855;
+ display:flex;align-items:center;justify-content:center;
+ font-size:52px;margin:35px auto;
+}
+.envelope:after{
+ content:"";position:absolute;inset:0;
+ background:#ffd9e7;
+ clip-path:polygon(0 0,100% 0,50% 65%);
+ border-radius:8px;
+}
+.envelope span{z-index:2;margin-top:45px}
+#letter{
+ display:none;background:#fffdf6;color:#493a3a;
+ max-width:430px;width:100%;padding:28px 23px;
+ border-radius:5px;box-shadow:0 8px 30px #b77b9140;
+ text-align:left;line-height:2;
+ transform:rotate(-1deg);
+}
+#letter h2{text-align:center}
+.signature{text-align:right;font-size:12px;margin-top:35px}
+.small{font-size:13px;color:#967184}
+</style>
+</head>
+<body>
+<div id="gameArea">
+ <h2>💔 ภารกิจวิ่งตามคนเก่า 💔</h2>
+ <p>เขาวิ่งไปแล้ว! แต่เพื่อน ๆ กำลังมาห้ามเรา!</p>
+ <canvas id="game" width="800" height="400"></canvas>
+ <p id="status">กดเริ่มเกมเพื่อออกตามหาเขา...</p>
+ <button id="start">▶ เริ่มเกม</button>
+ <div>
+  <button id="left">⬅️</button>
+  <button id="jump">⬆️ กระโดด</button>
+  <button id="right">➡️</button>
+ </div>
+ <p class="small">คอมพิวเตอร์: ← → เพื่อวิ่ง, Space เพื่อกระโดด</p>
+</div>
+
+<div id="letterArea">
+ <h2>📩 มีจดหมายมาถึงเธอ...</h2>
+ <p>กดที่ซองเพื่อเปิดอ่าน</p>
+ <div class="envelope" id="envelope" role="button" tabindex="0"
+      aria-label="เปิดจดหมาย"><span>💌</span></div>
+ <div id="letter">
+  <h2>ถึงคนที่ยังไม่ยอมตัดใจ 💔</h2>
+  <p>ตัดใจเถอะน้อง</p>
+  <p>เขาไม่กลับมาแล้ว</p>
+  <p>ยอมรับความเป็นจริงเถอะ</p>
+  <p>บางครั้งคนที่เราวิ่งตาม ก็ไม่ได้หันกลับมารอเราแล้วนะ</p>
+  <div class="signature">ควยเค้ก</div>
+ </div>
+ <button id="replay" style="display:none">🔄 วิ่งตามใหม่อีกครั้ง</button>
+</div>
+
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const status=document.getElementById('status');
+const gameArea=document.getElementById('gameArea');
+const letterArea=document.getElementById('letterArea');
+
+let running=false, progress=0, playerY=0, vy=0;
+let keys={}, obstacles=[], lastTime=0, raf=0;
+
+function makeObstacles(){
+ obstacles=[
+  {x:240,name:'บูม',hit:false,color:'#4e9cdd'},
+  {x:480,name:'ก้อง',hit:false,color:'#7b68c9'},
+  {x:720,name:'เมล่อน',hit:false,color:'#e6a34d'},
+  {x:1000,name:'บูม',hit:false,color:'#4e9cdd'},
+  {x:1250,name:'ก้อง',hit:false,color:'#7b68c9'}
+ ];
+}
+
+function stick(x,ground,label,color,jump=0,scale=1){
+ ctx.save();
+ ctx.translate(x,ground-jump);ctx.scale(scale,scale);
+ ctx.strokeStyle=color;ctx.lineWidth=4;ctx.lineCap='round';
+ ctx.beginPath();ctx.arc(0,-43,12,0,Math.PI*2);ctx.stroke();
+ ctx.beginPath();
+ ctx.moveTo(0,-31);ctx.lineTo(0,0);
+ ctx.moveTo(0,-21);ctx.lineTo(-14,-8);
+ ctx.moveTo(0,-21);ctx.lineTo(14,-8);
+ ctx.moveTo(0,0);ctx.lineTo(-12,18);
+ ctx.moveTo(0,0);ctx.lineTo(12,18);ctx.stroke();
+ ctx.fillStyle='#49394a';ctx.font='bold 15px sans-serif';
+ ctx.textAlign='center';ctx.fillText(label,0,-67);
+ ctx.restore();
+}
+
+function draw(){
+ ctx.clearRect(0,0,800,400);
+ // background
+ ctx.fillStyle='#f9f4ff';ctx.fillRect(0,0,800,400);
+ ctx.fillStyle='#e0f4d7';ctx.fillRect(0,330,800,70);
+ ctx.strokeStyle='#a6ce98';ctx.lineWidth=3;
+ ctx.beginPath();ctx.moveTo(0,330);ctx.lineTo(800,330);ctx.stroke();
+ for(let i=0;i<12;i++){
+  let x=((i*100-progress*.7)%900+900)%900;
+  ctx.fillStyle='#f2a6c2';
+  ctx.beginPath();ctx.arc(x,360,4,0,Math.PI*2);ctx.fill();
+ }
+ // progress
+ ctx.fillStyle='#61485a';ctx.font='bold 16px sans-serif';
+ ctx.textAlign='left';ctx.fillText('ระยะทาง: '+Math.floor(progress)+' m',20,28);
+
+ // player stays in place as world moves
+ stick(150,330,'เรา','#e75d91',playerY);
+ // old runs ahead
+ let oldX=470-progress*.13;
+ if(progress<1550){
+  stick(Math.max(400,oldX),330,'คนเก่า','#686bd1');
+ }else{
+  stick(480,330,'คนเก่า','#686bd1');
+  stick(560,330,'แฟนใหม่','#ed9349');
+  ctx.fillStyle='#e95d91';ctx.font='bold 19px sans-serif';
+  ctx.textAlign='center';ctx.fillText('❤️',520,240);
+ }
+
+ for(const o of obstacles){
+  let x=o.x-progress;
+  if(x>-60&&x<850&&!o.hit){
+   // friend jumps into the path
+   let h=18+Math.abs(Math.sin(progress*.045+o.x)) * 30;
+   stick(x,330,o.name,o.color,h,.9);
+  }
+ }
+ if(progress>1550){
+  ctx.fillStyle='#e65387';ctx.font='bold 25px sans-serif';
+  ctx.textAlign='center';ctx.fillText('อ้าว... เขามีแฟนใหม่แล้ว 😭',400,85);
+ }
+}
+
+function start(){
+ cancelAnimationFrame(raf);
+ progress=0;playerY=0;vy=0;keys={};
+ makeObstacles();running=true;lastTime=0;
+ gameArea.style.display='block';
+ letterArea.style.display='none';
+ document.getElementById('letter').style.display='none';
+ document.getElementById('envelope').style.display='flex';
+ document.getElementById('replay').style.display='none';
+ status.textContent='วิ่งเลย! อย่าให้คนเก่าหนีไป!';
+ raf=requestAnimationFrame(loop);
+}
+
+function loop(time){
+ if(!running)return;
+ const dt=lastTime?Math.min((time-lastTime)/16.67,2):1;
+ lastTime=time;
+
+ let speed=0;
+ if(keys.ArrowRight||keys.d) speed=4;
+ if(keys.ArrowLeft||keys.a) speed=-2;
+ progress=Math.max(0,progress+speed*dt);
+
+ // gravity
+ playerY+=vy*dt;
+ vy-=1.15*dt;
+ if(playerY<0){playerY=0;vy=0}
+
+ // friends try to stop the player
+ for(const o of obstacles){
+  let x=o.x-progress;
+  if(!o.hit&&x>115&&x<190){
+   if(playerY>20){
+    o.hit=true;
+    status.textContent='หลบเพื่อน '+o.name+' ได้แล้ว! วิ่งต่อ!';
+   }else{
+    progress=Math.max(0,progress-2*dt);
+    status.textContent=o.name+' กระโดดเข้ามาห้าม! กระโดดข้ามไปเร็ว!';
+   }
+  }
+ }
+ if(progress>1550){
+  status.textContent='เขาเจอแฟนใหม่แล้ว... วิ่งไปดูให้ชัด ๆ 💔';
+ }
+ draw();
+
+ if(progress>=1850){
+  running=false;
+  draw();
+  status.textContent='ภารกิจสำเร็จ... แต่ตอนจบไม่เหมือนที่คิด 😭';
+  setTimeout(()=>{
+   gameArea.style.display='none';
+   letterArea.style.display='flex';
+  },1200);
+  return;
+ }
+ raf=requestAnimationFrame(loop);
+}
+
+function jump(){
+ if(running&&playerY===0)vy=13;
+}
+document.addEventListener('keydown',e=>{
+ if(['ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+ keys[e.key]=true;
+ if(e.code==='Space')jump();
+});
+document.addEventListener('keyup',e=>keys[e.key]=false);
+
+function hold(id,key){
+ const b=document.getElementById(id);
+ b.addEventListener('pointerdown',e=>{
+  e.preventDefault();keys[key]=true;
+ });
+ ['pointerup','pointercancel','pointerleave'].forEach(ev=>
+  b.addEventListener(ev,()=>keys[key]=false));
+}
+hold('left','ArrowLeft');
+hold('right','ArrowRight');
+document.getElementById('jump').addEventListener('pointerdown',e=>{
+ e.preventDefault();jump();
+});
+document.getElementById('start').onclick=start;
+
+function openLetter(){
+ document.getElementById('envelope').style.display='none';
+ document.getElementById('letter').style.display='block';
+ document.getElementById('replay').style.display='inline-block';
+}
+document.getElementById('envelope').onclick=openLetter;
+document.getElementById('envelope').onkeydown=e=>{
+ if(e.key==='Enter'||e.key===' ')openLetter();
+};
+document.getElementById('replay').onclick=start;
+draw();
+</script>
+</body>
+</html>
